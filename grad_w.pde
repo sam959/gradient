@@ -1,11 +1,11 @@
-import java.util.Scanner;
-import java.lang.Thread;
-
 import processing.video.*;
 import controlP5.*;
 
 int numPixels;
 int[] backgroundPixels;
+int[] shiftColors;
+int[] shiftBackColors;
+
 float[] gradients;
 float gradient;
 boolean displacementOn;
@@ -23,15 +23,16 @@ int backB;
 float diffR;
 float diffG;
 float diffB;
-String path;
 int photoIndex;
 float lfo;
+
+int prevPix;
+int pixel;
 
 color currColor;
 color bkgdColor; 
 
 Slider shiftGradientSlider;
-Slider backRSlider;
 
 Movie video;
 
@@ -42,13 +43,15 @@ float lfoFreq;
 float lfoAmplitude;
 
 void setup() {
-    size(640, 480); 
+    size(480, 480); 
     colorMode(HSB);
     frameRate(30);
     cp5 = new ControlP5(this);
-    path = "";
+    shiftColors = new int[3];
+    shiftBackColors = new int[3];
     shiftGradient = 0.0;
     displacement = 0;
+    prevPix = 0;
     currR = 0;
     currB = 0;
     currG = 0;
@@ -61,17 +64,17 @@ void setup() {
     lfoAmplitude = 0.0;
     photoIndex = 0;
     lfo = 0.0;
-    initVideo("makeamove.mp4");
+    initVideo("electrik.mp4");
     setupOptions();
 
 }
 
 void draw() {
     //image(video, 0,0, width, height);
+    loadPixels();
     if(isVideoPlaying && video.width > 0){
       video.loadPixels(); // Make the pixels of video available
       // Difference between the current frame and the stored background
-      //lfoFreq = map(lfoFreq, 0.0, 500, 0.00005, 2);
       lfo =  sin(millis()* lfoFreq) * lfoAmplitude;
 
       for (int i = 0; i < numPixels; i++) { 
@@ -81,15 +84,8 @@ void draw() {
         gradients[i] = coordX * shiftGradient;
 
         currColor = video.pixels[i];
-        bkgdColor = backgroundPixels[i];
-      
-        currR = (currColor >> shiftR) & 0xFF;
-        currG = (currColor >> shiftG) & 0xFF;
-        currB = currColor & 0xFF;
-     
-        backR = (bkgdColor >> 16) & 0xFF;
-        backG = (bkgdColor >> 8) & 0xFF;
-        backB = bkgdColor & 0xFF;
+        shiftColors = bitShift(currColor, shiftR, shiftG);
+        shiftBackColors = bitShift(bkgdColor, 16, 8);
 
         if(displacementOn){
           //gradient = i%map(mouseX, 0, video.width, 0, 1000);
@@ -103,29 +99,47 @@ void draw() {
           gradient = gradients[i];
         }
 
-        diffR = abs(currR - gradient);
-        diffG = abs(currG + gradient);
-        diffB = abs(currB - gradient);
-        //print(String.format("Curent Red: %d, Red: %f\n", currR, diffR));
+        diffR = abs(shiftColors[0] - gradient);
+        diffG = abs(shiftColors[1] + gradient);
+        diffB = abs(shiftColors[2] - gradient);
 
         //print("diff " + i%width + "\n");
         pixels[i] = color(diffR, diffG, diffB);
+        int index = i == 0? 0 : i - 1;
+        prevPix = pixels[index];
+        pixel = pixels[i];
+        //pixels[i] = color(prevR, prevG, prevB);
         // The following line does the same thing much faster, but is more technical
         //pixels[i] = 0xFF000000 | (diffR << 16) | (diffG << 8) | diffB;
       }
       updatePixels(); // Notify that the pixels[] array has changed
     }
+    fill(100, 180, 200);
+    text("Gradient: " + gradient, 10, 200);
+    text("Tan: " + tan(lfo), 10, 220);
+    text("prevPix: " + prevPix, 10, 240);
+    text("pixel: " + pixel, 10, 260);
+
+}
+// ---------------- PIXELS -----------------//
+
+int[] bitShift(color currColor, int shiftR, int shiftG){
+  int r = (currColor >> shiftR) & 0xFF;
+  int g = (currColor >> shiftG) & 0xFF;
+  int b = currColor & 0xFF;
+
+  return new int[]{r, g, b};
 }
 
-// When a key is pressed, capture the background image into the backgroundPixels
-// buffer, by copying each of the current frame's pixels into it.
+// ---------------- EVENTS -----------------//
+
 void keyPressed() {
   if(key == 'n'){
     displacementOn = !displacementOn;
     if(!displacementOn){
       displacement = 0;
       video.loadPixels();
-      arraycopy(video.pixels, backgroundPixels);
+      arrayCopy(video.pixels, backgroundPixels);
     } else {
       shiftGradient = 0.0;
     }
@@ -168,6 +182,8 @@ void keyPressed() {
   }
 }
 
+// ---------------- VIDEO -----------------//
+
 void movieEvent(Movie video){
   if(video.available()){
     video.read();
@@ -177,6 +193,7 @@ void movieEvent(Movie video){
 
 void initVideo(String path){
     video = new Movie(this,path);
+    delay(3000);
     video.loop();
     video.volume(0);
 
@@ -187,9 +204,9 @@ void initVideo(String path){
     addSlider("displacement", 220, 10, 1000.0);
       
     print(String.format("Video size: %d, pixels: %d\n", video.width, numPixels));
-    // Make the pixels[] array available for direct manipulation
-    loadPixels();
 }
+
+// ---------------- GUI -----------------//
 
 void addSlider(String name, int posX, int posY, float max){
     cp5.addSlider(name)
@@ -210,5 +227,4 @@ void setupOptions(){
 
     cp5.getController("lfoFreq").setGroup("LFO");
     cp5.getController("lfoAmplitude").setGroup("LFO");
-
 }
